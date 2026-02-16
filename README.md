@@ -26,6 +26,8 @@ details.
   - [x] Popup windows
   - [x] Support session/window/pane switcher via Fzf popup
   - [x] Full Unicode support (grapheme clustering and wide characters)
+  - [x] Seamless navigation between multiplexer panes and application panes (via custom OSC 8671). Requires corresponding
+        [Neovim plugin](https://github.com/coletrammer/seamless-navigation.nvim/).
 - [ ] Graphics
   - [x] Kitty image protocol (APC passthrough)
     - [x] Proper Unicode handling (specifically 0 width characters)
@@ -58,7 +60,7 @@ See [here](docs/pages/install.md).
 
 We aim to match the Unicode processing specified by [kitty](https://github.com/kovidgoyal/kitty/blob/master/docs/text-sizing-protocol.rst#the-algorithm-for-splitting-text-into-cells).
 This includes correctly handling emoji sequences and grapheme clusters. When `ttx` is run in a terminal which does not
-support this, text to fit into whatever the outer terminal thinks is a single cell. This matches the behavior of
+support this, text is fit into whatever the outer terminal thinks is a single cell. This matches the behavior of
 Neovim 0.11 when running in these terminals.
 
 These issues can be avoided by using a terminal like [kitty](https://github.com/kovidgoyal/kitty),

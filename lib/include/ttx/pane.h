@@ -21,6 +21,8 @@
 #include "ttx/terminal.h"
 #include "ttx/terminal/escapes/osc_52.h"
 #include "ttx/terminal/escapes/osc_7.h"
+#include "ttx/terminal/escapes/osc_8671.h"
+#include "ttx/terminal/navigation_direction.h"
 
 namespace ttx {
 class Pane;
@@ -34,6 +36,9 @@ struct PaneHooks {
 
     /// @brief Application controlled callback when a clipboard set/request is invoked.
     di::Function<void(terminal::OSC52, bool)> did_selection;
+
+    /// @brief Callback when a seamless navigation message is seen.
+    di::Function<void(terminal::OSC8671)> did_receive_seamless_navigation;
 
     /// @brief Application controlled callback when APC command is set.
     di::Function<void(di::StringView)> apc_passthrough;
@@ -119,6 +124,8 @@ public:
     void stop_capture();
     void soft_reset();
     void exit();
+
+    auto seamless_navigate(terminal::OSC8671&& osc_8671) -> bool;
 
     /// @brief Get the pane's current working directory
     ///

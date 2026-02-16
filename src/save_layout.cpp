@@ -14,6 +14,10 @@ auto SaveLayoutThread::create(di::Synchronized<LayoutState>& layout_state, di::P
     return result;
 }
 
+auto SaveLayoutThread::create_mock(di::Synchronized<LayoutState>& layout_state) -> di::Box<SaveLayoutThread> {
+    return di::make_box<SaveLayoutThread>(layout_state, di::Path {}, di::Optional<di::TransparentString> {});
+}
+
 SaveLayoutThread::SaveLayoutThread(di::Synchronized<LayoutState>& layout_state, di::Path save_dir,
                                    di::Optional<di::TransparentString> layout_name)
     : m_layout_state(layout_state), m_save_dir(di::move(save_dir)), m_layout_name(di::move(layout_name)) {}

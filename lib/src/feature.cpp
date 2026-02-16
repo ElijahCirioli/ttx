@@ -10,6 +10,7 @@
 #include "ttx/terminal/escapes/mode.h"
 #include "ttx/terminal/escapes/osc_52.h"
 #include "ttx/terminal/escapes/osc_66.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/escapes/terminfo_string.h"
 #include "ttx/terminal_input.h"
 #include "ttx/utf8_stream_decoder.h"
@@ -122,6 +123,8 @@ public:
 
     void handle_event(terminal::OSC52 const&) {}
 
+    void handle_event(terminal::OSC8671 const&) { m_result |= Feature::SeamlessNavigation; }
+
 private:
     Feature m_result = Feature::None;
     bool m_done = false;
@@ -155,6 +158,10 @@ auto detect_features(dius::SyncFile& terminal) -> di::Result<Feature> {
 
     // Kitty keyboard protocol query
     di::writer_print<di::String::Encoding>(request_buffer, "\033[?u"_sv);
+
+    // OSC 8671 query
+    di::writer_print<di::String::Encoding>(
+        request_buffer, terminal::OSC8671 { .type = terminal::SeamlessNavigationRequestType::Supported }.serialize());
 
     // Grapheme clustering support query
     // Although DEC mode 2027 exists, it isn't all too helpful because as of this writing,

@@ -2,8 +2,8 @@
 
 #include "actions.h"
 #include "input_mode.h"
-#include "tab.h"
 #include "ttx/modifiers.h"
+#include "ttx/terminal/navigation_direction.h"
 
 namespace ttx {
 static auto make_switch_tab_binds(di::Vector<KeyBind>& result) {
@@ -29,10 +29,10 @@ static auto make_switch_tab_binds(di::Vector<KeyBind>& result) {
 
 static auto make_navigate_binds(di::Vector<KeyBind>& result, InputMode mode, InputMode next_mode) {
     auto keys = di::Array {
-        di::Tuple { Key::J, NavigateDirection::Down },
-        di::Tuple { Key::K, NavigateDirection::Up },
-        di::Tuple { Key::L, NavigateDirection::Right },
-        di::Tuple { Key::H, NavigateDirection::Left },
+        di::Tuple { Key::J, terminal::NavigateDirection::Down },
+        di::Tuple { Key::K, terminal::NavigateDirection::Up },
+        di::Tuple { Key::L, terminal::NavigateDirection::Right },
+        di::Tuple { Key::H, terminal::NavigateDirection::Left },
     };
     for (auto [key, direction] : keys) {
         result.push_back({
@@ -130,6 +130,7 @@ auto make_key_binds(Key prefix, di::Path save_state_path, bool replay_mode) -> d
             .next_mode = InputMode::Normal,
             .action = enter_normal_mode(),
         });
+        make_navigate_binds(result, InputMode::Insert, InputMode::Insert);
         result.push_back({
             .key = Key::None,
             .mode = InputMode::Insert,
@@ -146,7 +147,7 @@ auto make_key_binds(Key prefix, di::Path save_state_path, bool replay_mode) -> d
             .action = send_to_pane(),
         });
         make_resize_binds(result, InputMode::Normal);
-        make_navigate_binds(result, InputMode::Normal, InputMode::Insert);
+        make_navigate_binds(result, InputMode::Normal, InputMode::Normal);
         result.push_back({
             .key = Key::C,
             .mode = InputMode::Normal,

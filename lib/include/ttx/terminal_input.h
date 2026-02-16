@@ -13,12 +13,13 @@
 #include "ttx/terminal/escapes/device_status.h"
 #include "ttx/terminal/escapes/mode.h"
 #include "ttx/terminal/escapes/osc_52.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/escapes/terminfo_string.h"
 
 namespace ttx {
 using Event = di::Variant<KeyEvent, MouseEvent, FocusEvent, PasteEvent, terminal::PrimaryDeviceAttributes,
                           terminal::ModeQueryReply, terminal::CursorPositionReport, terminal::KittyKeyReport,
-                          terminal::StatusStringResponse, terminal::TerminfoString, terminal::OSC52>;
+                          terminal::StatusStringResponse, terminal::TerminfoString, terminal::OSC52, terminal::OSC8671>;
 
 class TerminalInputParser {
 public:

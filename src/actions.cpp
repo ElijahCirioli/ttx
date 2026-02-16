@@ -4,6 +4,7 @@
 #include "di/format/prelude.h"
 #include "di/util/construct.h"
 #include "fzf.h"
+#include "input.h"
 #include "tab.h"
 #include "ttx/layout.h"
 
@@ -23,19 +24,13 @@ auto reset_mode() -> Action {
     };
 }
 
-auto navigate(NavigateDirection direction) -> Action {
+auto navigate(terminal::NavigateDirection direction) -> Action {
     return {
         .description = *di::present(
             "Navigate to the first pane in direction ({}) starting from the current active pane"_sv, direction),
         .apply =
             [direction](ActionContext const& context) {
-                context.layout_state.with_lock([&](LayoutState& state) {
-                    if (!state.active_tab()) {
-                        return;
-                    }
-                    state.active_tab()->navigate(direction);
-                });
-                context.render_thread.request_render();
+                context.input_thread.request_navigate(direction);
             },
     };
 }
@@ -81,7 +76,7 @@ auto create_tab() -> Action {
                     for (auto& session : state.active_session()) {
                         auto cwd = session.active_pane().and_then(&Pane::current_working_directory);
                         (void) state.add_tab(session, context.create_pane_args.with_cwd(cwd.transform(di::to_owned)),
-                                             context.render_thread);
+                                             context.render_thread, context.input_thread);
                     }
                 });
                 context.render_thread.request_render();
@@ -126,7 +121,7 @@ auto rename_tab() -> Action {
                             });
                         if (auto tab = state.active_tab()) {
                             (void) state.popup_pane(session, tab.value(), popup_layout, di::move(create_pane_args),
-                                                    context.render_thread);
+                                                    context.render_thread, context.input_thread);
                         }
                     }
                 });
@@ -239,7 +234,8 @@ auto find_tab() -> Action {
                             });
                         if (auto tab = state.active_tab()) {
                             (void) state.popup_pane(session.value(), tab.value(), popup_layout,
-                                                    di::move(create_pane_args), context.render_thread);
+                                                    di::move(create_pane_args), context.render_thread,
+                                                    context.input_thread);
                         }
                     }
                 });
@@ -254,7 +250,8 @@ auto create_session() -> Action {
         .apply =
             [](ActionContext const& context) {
                 context.layout_state.with_lock([&](LayoutState& state) {
-                    (void) state.add_session(context.create_pane_args.clone(), context.render_thread);
+                    (void) state.add_session(context.create_pane_args.clone(), context.render_thread,
+                                             context.input_thread);
                 });
                 context.render_thread.request_render();
             },
@@ -293,7 +290,7 @@ auto rename_session() -> Action {
                             });
                         if (auto tab = state.active_tab()) {
                             (void) state.popup_pane(session, tab.value(), popup_layout, di::move(create_pane_args),
-                                                    context.render_thread);
+                                                    context.render_thread, context.input_thread);
                         }
                     }
                 });
@@ -388,7 +385,8 @@ auto find_session() -> Action {
                     if (auto session = state.active_session()) {
                         if (auto tab = state.active_tab()) {
                             (void) state.popup_pane(session.value(), tab.value(), popup_layout,
-                                                    di::move(create_pane_args), context.render_thread);
+                                                    di::move(create_pane_args), context.render_thread,
+                                                    context.input_thread);
                         }
                     }
                 });
@@ -433,7 +431,8 @@ auto save_layout() -> Action {
                     if (auto session = state.active_session()) {
                         if (auto tab = state.active_tab()) {
                             (void) state.popup_pane(session.value(), tab.value(), popup_layout,
-                                                    di::move(create_pane_args), context.render_thread);
+                                                    di::move(create_pane_args), context.render_thread,
+                                                    context.input_thread);
                         }
                     }
                 });
@@ -511,7 +510,7 @@ auto hard_reset() -> Action {
                             (void) tab.replace_pane(pane,
                                                     context.create_pane_args.with_cwd(
                                                         pane.current_working_directory().transform(di::to_owned)),
-                                                    context.render_thread);
+                                                    context.render_thread, context.input_thread);
                         }
                     }
                 });
@@ -551,7 +550,7 @@ auto add_pane(Direction direction) -> Action {
                             auto cwd = tab.active().and_then(&Pane::current_working_directory);
                             (void) state.add_pane(session, tab,
                                                   context.create_pane_args.with_cwd(cwd.transform(di::to_owned)),
-                                                  direction, context.render_thread);
+                                                  direction, context.render_thread, context.input_thread);
                         }
                     }
                 });

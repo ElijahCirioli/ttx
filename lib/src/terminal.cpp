@@ -21,6 +21,7 @@
 #include "ttx/terminal/escapes/osc_52.h"
 #include "ttx/terminal/escapes/osc_66.h"
 #include "ttx/terminal/escapes/osc_8.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/escapes/size_report.h"
 #include "ttx/terminal/screen.h"
 
@@ -81,6 +82,10 @@ void Terminal::on_parser_result(OSC&& osc) {
     }
     if (ps == "133"_sv) {
         osc_133(osc.data.substr(ps_end.end()));
+        return;
+    }
+    if (ps == "8671"_sv) {
+        osc_8671(osc.data.substr(ps_end.end()));
         return;
     }
 }
@@ -562,6 +567,38 @@ void Terminal::osc_133(di::StringView data) {
     // Ignore semantic prompts for alternate screen
     if (!m_alternate_screen) {
         active_screen().screen.put_semantic_prompt(di::move(osc133).value());
+    }
+}
+
+// OSC 8671 - spec documented in osc_8671.h
+void Terminal::osc_8671(di::StringView data) {
+    auto osc8671 = terminal::OSC8671::parse(data);
+    if (!osc8671) {
+        return;
+    }
+
+    using enum terminal::SeamlessNavigationRequestType;
+    switch (osc8671->type) {
+        case Supported:
+            // Respond via echoing the request to indicate support.
+            m_outgoing_events.push_back(WritePtyString(osc8671->serialize()));
+            break;
+        case Register:
+            active_screen().m_seamless_navigate_protocol_active = true;
+            active_screen().m_seamless_navigate_protocol_hide_cursor_on_enter = osc8671->hide_cursor_on_enter;
+            break;
+        case Unregister:
+            active_screen().m_seamless_navigate_protocol_active = false;
+            active_screen().m_seamless_navigate_protocol_hide_cursor_on_enter = false;
+            break;
+        case Navigate:
+        case Acknowledge:
+            if (active_screen().m_seamless_navigate_protocol_active) {
+                m_outgoing_events.emplace_back(di::move(osc8671).value());
+            }
+            break;
+        case Enter:
+            break;
     }
 }
 
@@ -1148,6 +1185,8 @@ void Terminal::soft_reset() {
     m_mouse_protocol = MouseProtocol::None;
     active_screen().m_key_reporting_flags_stack.clear();
     active_screen().m_key_reporting_flags = KeyReportingFlags::None;
+    active_screen().m_seamless_navigate_protocol_active = false;
+    active_screen().m_seamless_navigate_protocol_hide_cursor_on_enter = false;
     m_focus_event_mode = FocusEventMode::Disabled;
     m_cursor_hidden = false;
     m_disable_drawing = false;
@@ -1208,12 +1247,22 @@ auto Terminal::state_as_escape_sequences() const -> di::String {
             set_kitty_key_flags(screen.m_key_reporting_flags);
         };
 
+        auto seamless_navigation_protocol = [&](ScreenState const& screen) {
+            if (screen.m_seamless_navigate_protocol_active) {
+                di::writer_print<di::String::Encoding>(
+                    writer, "{}"_sv,
+                    terminal::OSC8671 { .type = terminal::SeamlessNavigationRequestType::Register }.serialize());
+            }
+        };
+
         print_screen(m_primary_screen);
         kitty_key_flags(m_primary_screen);
+        seamless_navigation_protocol(m_primary_screen);
         if (m_alternate_screen) {
             di::writer_print<di::String::Encoding>(writer, "\033[?1049h\033[H\033[2J"_sv);
             print_screen(*m_alternate_screen);
             kitty_key_flags(*m_alternate_screen);
+            seamless_navigation_protocol(*m_alternate_screen);
         }
     }
 

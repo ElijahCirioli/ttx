@@ -7,7 +7,7 @@
 namespace ttx {
 auto enter_normal_mode() -> Action;
 auto reset_mode() -> Action;
-auto navigate(NavigateDirection direction) -> Action;
+auto navigate(terminal::NavigateDirection direction) -> Action;
 auto resize(ResizeDirection direction, i32 amount_in_cells) -> Action;
 auto create_tab() -> Action;
 auto rename_tab() -> Action;

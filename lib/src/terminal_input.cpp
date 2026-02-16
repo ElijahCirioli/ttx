@@ -15,6 +15,7 @@
 #include "ttx/terminal/escapes/device_status.h"
 #include "ttx/terminal/escapes/mode.h"
 #include "ttx/terminal/escapes/osc_52.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/escapes/terminfo_string.h"
 
 namespace ttx {
@@ -63,6 +64,10 @@ void TerminalInputParser::handle(OSC const& osc) {
     if (osc.data.starts_with("52;"_sv)) {
         if (auto osc52 = terminal::OSC52::parse(osc.data.substr(di::next(osc.data.begin(), 3)))) {
             m_events.emplace_back(di::move(osc52).value());
+        }
+    } else if (osc.data.starts_with("8671;"_sv)) {
+        if (auto osc8671 = terminal::OSC8671::parse(osc.data.substr(di::next(osc.data.begin(), 5)))) {
+            m_events.emplace_back(di::move(osc8671).value());
         }
     }
 }

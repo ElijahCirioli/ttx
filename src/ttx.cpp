@@ -269,7 +269,7 @@ static auto main(Args& args) -> di::Result<void> {
     auto session_save_dir = TRY(get_session_save_dir());
     auto layout_save_thread = TRY([&] -> di::Result<di::Box<SaveLayoutThread>> {
         if (args.headless) {
-            return nullptr;
+            return SaveLayoutThread::create_mock(layout_state);
         }
         return SaveLayoutThread::create(layout_state, session_save_dir.clone(),
                                         args.layout_save_name.transform(di::to_owned));
@@ -294,7 +294,7 @@ static auto main(Args& args) -> di::Result<void> {
     // Setup - input thread.
     auto input_thread = TRY([&] -> di::Result<di::Box<InputThread>> {
         if (args.headless) {
-            return nullptr;
+            return InputThread::create_mock(layout_state, *render_thread, *layout_save_thread);
         }
         return InputThread::create(base_create_pane_args.clone(), di::move(key_binds), layout_state, features,
                                    *render_thread, *layout_save_thread);
@@ -335,11 +335,11 @@ static auto main(Args& args) -> di::Result<void> {
                 auto create_pane_args = base_create_pane_args.clone();
                 create_pane_args.replay_path = di::PathView(replay_path).to_owned();
                 if (state.empty()) {
-                    TRY(state.add_session(di::move(create_pane_args), *render_thread));
+                    TRY(state.add_session(di::move(create_pane_args), *render_thread, *input_thread));
                 } else {
                     // Horizontal split (means vertical layout)
                     TRY(state.add_pane(*state.active_session(), *state.active_tab(), di::move(create_pane_args),
-                                       Direction::Vertical, *render_thread));
+                                       Direction::Vertical, *render_thread, *input_thread));
                 }
             }
         } else {
@@ -370,14 +370,14 @@ static auto main(Args& args) -> di::Result<void> {
                 if (file) {
                     auto string = TRY(di::read_to_string(file.value()));
                     auto json = TRY(di::from_json_string<json::Layout>(string));
-                    TRY(state.restore_json(json, make_pane_args(), *render_thread));
+                    TRY(state.restore_json(json, make_pane_args(), *render_thread, *input_thread));
                 } else if (args.layout_restore_name) {
                     return di::Unexpected(di::move(file).error());
                 }
             }
 
             if (state.empty()) {
-                TRY(state.add_session(make_pane_args(), *render_thread));
+                TRY(state.add_session(make_pane_args(), *render_thread, *input_thread));
             }
         }
         return {};

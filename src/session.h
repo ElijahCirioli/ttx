@@ -15,7 +15,7 @@ public:
         : m_layout_state(layout_state), m_name(di::move(name)), m_id(id) {}
 
     static auto from_json_v1(json::v1::Session const& json, LayoutState* layout_state, Size size, CreatePaneArgs args,
-                             RenderThread& render_thread) -> di::Result<di::Box<Session>>;
+                             RenderThread& render_thread, InputThread& input_thread) -> di::Result<di::Box<Session>>;
 
     void layout(di::Optional<Size> size = {});
     auto set_active_tab(Tab* tab) -> bool;
@@ -30,11 +30,12 @@ public:
     void set_name(di::String name) { m_name = di::move(name); }
     auto name() const -> di::StringView { return m_name; }
 
-    auto add_pane(Tab& tab, u64 pane_id, CreatePaneArgs args, Direction direction, RenderThread& render_thread)
-        -> di::Result<>;
+    auto add_pane(Tab& tab, u64 pane_id, CreatePaneArgs args, Direction direction, RenderThread& render_thread,
+                  InputThread& input_thread) -> di::Result<>;
     auto popup_pane(Tab& tab, u64 pane_id, PopupLayout const& popup_layout, CreatePaneArgs args,
-                    RenderThread& render_thread) -> di::Result<>;
-    auto add_tab(CreatePaneArgs args, u64 tab_id, u64 pane_id, RenderThread& render_thread) -> di::Result<>;
+                    RenderThread& render_thread, InputThread& input_thread) -> di::Result<>;
+    auto add_tab(CreatePaneArgs args, u64 tab_id, u64 pane_id, RenderThread& render_thread, InputThread& input_thread)
+        -> di::Result<>;
 
     auto empty() const -> bool { return m_tabs.empty(); }
     auto tabs() -> di::Vector<di::Box<Tab>>& { return m_tabs; }

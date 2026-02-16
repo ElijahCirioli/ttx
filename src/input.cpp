@@ -1,6 +1,5 @@
 #include "input.h"
 
-#include "dius/print.h"
 #include "input_mode.h"
 #include "key_bind.h"
 #include "layout_state.h"
@@ -17,6 +16,8 @@
 #include "ttx/pane.h"
 #include "ttx/paste_event.h"
 #include "ttx/terminal/escapes/osc_52.h"
+#include "ttx/terminal/escapes/osc_8671.h"
+#include "ttx/terminal/navigation_direction.h"
 #include "ttx/terminal_input.h"
 #include "ttx/utf8_stream_decoder.h"
 
@@ -32,6 +33,12 @@ auto InputThread::create(CreatePaneArgs create_pane_args, di::Vector<KeyBind> ke
     return result;
 }
 
+auto InputThread::create_mock(di::Synchronized<LayoutState>& layout_state, RenderThread& render_thread,
+                              SaveLayoutThread& save_layout_thread) -> di::Box<InputThread> {
+    return di::make_box<InputThread>(CreatePaneArgs {}, di::Vector<KeyBind> {}, layout_state, Feature::All,
+                                     render_thread, save_layout_thread);
+}
+
 InputThread::InputThread(CreatePaneArgs create_pane_args, di::Vector<KeyBind> key_binds,
                          di::Synchronized<LayoutState>& layout_state, Feature features, RenderThread& render_thread,
                          SaveLayoutThread& save_layout_thread)
@@ -40,7 +47,8 @@ InputThread::InputThread(CreatePaneArgs create_pane_args, di::Vector<KeyBind> ke
     , m_layout_state(layout_state)
     , m_render_thread(render_thread)
     , m_save_layout_thread(save_layout_thread)
-    , m_features(features) {}
+    , m_features(features)
+    , m_rng(u32(dius::SteadyClock::now().time_since_epoch().count())) {}
 
 InputThread::~InputThread() {
     request_exit();
@@ -81,18 +89,64 @@ void InputThread::input_thread() {
             return;
         }
 
+        auto now = dius::SteadyClock::now();
         auto utf8_string = utf8_decoder.decode(buffer | di::take(*nread));
         auto events = parser.parse(utf8_string, m_features);
-        for (auto& event : events) {
-            if (m_done.load(di::MemoryOrder::Acquire)) {
-                return;
+        m_pending_events.with_lock([&](auto& pending_events) {
+            for (auto& event : events) {
+                pending_events.push_back({
+                    .event = di::move(event),
+                    .receptionTime = now,
+                });
             }
+        });
 
+        process_pending_events();
+    }
+}
+
+void InputThread::process_pending_events() {
+    constexpr auto timeout = di::Milliseconds(200);
+
+    while (!m_done.load(di::MemoryOrder::Acquire)) {
+        auto first = m_pending_events.lock()->pop_front();
+        if (!first) {
+            break;
+        }
+
+        // Check for timeout.
+        if (first->pending && dius::SteadyClock::now() > first->receptionTime + timeout) {
             di::visit(
-                [&](auto& ev) {
-                    this->handle_event(di::move(ev));
+                [&](auto& x) {
+                    if constexpr (requires { this->handle_event(x, true); }) {
+                        return this->handle_event(x, true);
+                    }
                 },
-                event);
+                first->event);
+            continue;
+        }
+
+        // If the event is still processing, just wait for now.
+        if (first->pending) {
+            m_pending_events.lock()->push_back(di::move(first).value());
+            break;
+        }
+
+        auto was_processed = di::visit(
+            [&](auto& x) {
+                if constexpr (requires { this->handle_event(x, false); }) {
+                    return this->handle_event(x, false);
+                } else {
+                    this->handle_event(di::move(x));
+                    return true;
+                }
+            },
+            first->event);
+        if (!was_processed) {
+            // Add the event back in but mark it as pending.
+            first->pending = true;
+            m_pending_events.lock()->push_back(di::move(first).value());
+            break;
         }
     }
 }
@@ -114,6 +168,7 @@ void InputThread::handle_event(KeyEvent&& event) {
                 .layout_state = m_layout_state,
                 .render_thread = m_render_thread,
                 .save_layout_thread = m_save_layout_thread,
+                .input_thread = *this,
                 .create_pane_args = m_create_pane_args,
                 .done = m_done,
             });
@@ -245,6 +300,103 @@ void InputThread::handle_event(terminal::OSC52&& event) {
     });
 }
 
+auto InputThread::handle_event(terminal::OSC8671& event, bool did_timeout) -> bool {
+    if (event.type == terminal::SeamlessNavigationRequestType::Enter) {
+        m_layout_state.with_lock([&](LayoutState& state) {
+            for (auto& tab : state.active_tab()) {
+                auto range_start = event.range
+                                       .transform([](auto x) {
+                                           return di::get<0>(x) - 1;
+                                       })
+                                       .value_or(0u);
+                auto range_end = event.range
+                                     .transform([](auto x) {
+                                         return di::get<1>(x);
+                                     })
+                                     .value_or(event.direction == terminal::NavigateDirection::Left ||
+                                                       event.direction == terminal::NavigateDirection::Right
+                                                   ? state.size().rows
+                                                   : state.size().cols);
+                tab.navigate(event.direction.value(), terminal::NavigateWrapMode::Allow, {},
+                             di::Tuple { range_start, range_end }, Tab::SeamlessNavigateMode::Disabled, true);
+
+                // We always request a render because we configure enter events to clear the current cursor
+                // to prevent flickering.
+                m_render_thread.request_render();
+            }
+        });
+        return true;
+    }
+
+    if (event.type != terminal::SeamlessNavigationRequestType::Navigate) {
+        return true;
+    }
+
+    auto seamless_navigate_mode =
+        did_timeout ? Tab::SeamlessNavigateMode::Disabled : Tab::SeamlessNavigateMode::Enabled;
+    auto did_navigate = m_layout_state.with_lock([&](LayoutState& state) -> di::Optional<bool> {
+        for (auto& tab : state.active_tab()) {
+            if (!tab.layout_tree() || !tab.active()) {
+                return false;
+            }
+            auto range = event.range.transform([&](auto x) -> di::Tuple<u32, u32> {
+                auto [start, end] = x;
+                auto entry = tab.layout_tree()->find_pane(tab.active().data());
+                ASSERT(entry);
+                auto const limit = event.direction.value() == terminal::NavigateDirection::Left ||
+                                           event.direction.value() == terminal::NavigateDirection::Right
+                                       ? entry->size.rows
+                                       : entry->size.cols;
+                auto const base = event.direction.value() == terminal::NavigateDirection::Left ||
+                                          event.direction.value() == terminal::NavigateDirection::Right
+                                      ? entry->row
+                                      : entry->col;
+                return { base + di::min(start - 1, limit), base + di::min(end, limit) };
+            });
+            return tab.navigate(event.direction.value(), event.wrap_mode, event.id.clone(), range,
+                                seamless_navigate_mode, false);
+        }
+        return false;
+    });
+
+    if (did_navigate == true) {
+        m_render_thread.request_render();
+    }
+
+    if (did_navigate.has_value() && event.wrap_mode == terminal::NavigateWrapMode::Disallow) {
+        // We need to reply to the OSC 8671 request. Note that for navigation triggered by the user
+        // pressing keyboard shortcuts wrap mode will be Enabled, so we won't ever send a response when
+        // we're just simulating events.
+        if (did_navigate.value()) {
+            event.type = terminal::SeamlessNavigationRequestType::Acknowledge;
+            event.range = {};
+        }
+        m_render_thread.push_event(WriteString { event.serialize() });
+        return true;
+    }
+    return did_navigate.has_value();
+}
+
+void InputThread::request_navigate(terminal::NavigateDirection direction) {
+    auto dist = di::UniformIntDistribution<u64>(0, di::NumericLimits<u64>::max);
+    auto id = di::to_string(dist(m_rng));
+    m_pending_events.with_lock([&](auto& pending_events) {
+        // We push to the front of the queue because this function is expected to be called as
+        // the result of processing another input event. Effectively meaning this event replaces
+        // it in the queue.
+        pending_events.push_front({
+            .event =
+                terminal::OSC8671 {
+                    .type = terminal::SeamlessNavigationRequestType::Navigate,
+                    .direction = direction,
+                    .id = di::move(id),
+                    .wrap_mode = terminal::NavigateWrapMode::Allow,
+                },
+            .receptionTime = dius::SteadyClock::now(),
+        });
+    });
+}
+
 auto InputThread::handle_drag(LayoutState& state, MouseCoordinate const& coordinate) -> bool {
     auto _ = di::ScopeExit([&] {
         m_drag_origin = coordinate;
@@ -280,5 +432,33 @@ auto InputThread::handle_drag(LayoutState& state, MouseCoordinate const& coordin
     }
 
     return false;
+}
+
+void InputThread::notify_osc_8671(terminal::OSC8671&& osc_8671) {
+    if (osc_8671.type != terminal::SeamlessNavigationRequestType::Navigate &&
+        osc_8671.type != terminal::SeamlessNavigationRequestType::Acknowledge) {
+        return;
+    }
+
+    auto should_process = m_pending_events.with_lock([&](auto& pending_events) {
+        if (auto ev = pending_events.front()) {
+            if (auto event = di::get_if<terminal::OSC8671>(ev->event)) {
+                if (event->id == osc_8671.id) {
+                    if (osc_8671.type == terminal::SeamlessNavigationRequestType::Acknowledge) {
+                        pending_events.pop_front();
+                    } else {
+                        // Clear reception time to force a timeout. This results in processing the event.
+                        ev->receptionTime = {};
+                        event->range = osc_8671.range;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    });
+    if (should_process) {
+        process_pending_events();
+    }
 }
 }

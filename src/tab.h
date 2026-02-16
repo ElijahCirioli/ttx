@@ -6,22 +6,11 @@
 #include "ttx/layout_json.h"
 #include "ttx/pane.h"
 #include "ttx/popup.h"
+#include "ttx/terminal/navigation_direction.h"
 
 namespace ttx {
+class InputThread;
 class RenderThread;
-
-enum class NavigateDirection {
-    Left,
-    Right,
-    Up,
-    Down,
-};
-
-constexpr auto tag_invoke(di::Tag<di::reflect>, di::InPlaceType<NavigateDirection>) {
-    using enum NavigateDirection;
-    return di::make_enumerators<"NavigateDirection">(di::enumerator<"Left", Left>, di::enumerator<"Right", Right>,
-                                                     di::enumerator<"Up", Up>, di::enumerator<"Down", Down>);
-}
 
 class Session;
 
@@ -31,7 +20,7 @@ public:
     explicit Tab(Session* session, u64 id, di::String name) : m_session(session), m_id(id), m_name(di::move(name)) {}
 
     static auto from_json_v1(json::v1::Tab const& json, Session* session, Size size, CreatePaneArgs args,
-                             RenderThread& render_thread) -> di::Result<di::Box<Tab>>;
+                             RenderThread& render_thread, InputThread& input_thread) -> di::Result<di::Box<Tab>>;
 
     void layout(Size const& size);
     void invalidate_all();
@@ -41,14 +30,18 @@ public:
     // Returns the removed pane, if found.
     auto remove_pane(Pane* pane) -> di::Box<Pane>;
 
-    auto add_pane(u64 pane_id, Size const& size, CreatePaneArgs args, Direction direction, RenderThread& render_thread)
-        -> di::Result<>;
+    auto add_pane(u64 pane_id, Size const& size, CreatePaneArgs args, Direction direction, RenderThread& render_thread,
+                  InputThread& input_thread) -> di::Result<>;
     auto popup_pane(u64 pane_id, PopupLayout const& popup_layout, Size const& size, CreatePaneArgs args,
-                    RenderThread& render_thread) -> di::Result<>;
-    auto replace_pane(Pane& pane, CreatePaneArgs args, RenderThread& render_thread) -> di::Result<>;
+                    RenderThread& render_thread, InputThread& input_thread) -> di::Result<>;
+    auto replace_pane(Pane& pane, CreatePaneArgs args, RenderThread& render_thread, InputThread& input_thread)
+        -> di::Result<>;
     auto pane_by_id(u64 pane_id) -> di::Optional<Pane&>;
 
-    void navigate(NavigateDirection direction);
+    enum class SeamlessNavigateMode { Disabled, Enabled };
+    auto navigate(terminal::NavigateDirection direction, terminal::NavigateWrapMode wrap_mode,
+                  di::Optional<di::String> id, di::Optional<di::Tuple<u32, u32>> override_range,
+                  SeamlessNavigateMode seamless_navigate_mode, bool force_wrap) -> di::Optional<bool>;
 
     // Returns true if active pane has changed.
     auto set_active(Pane* pane) -> bool;
@@ -93,8 +86,8 @@ public:
     auto as_json_v1() const -> json::v1::Tab;
 
 private:
-    auto make_pane(u64 pane_id, CreatePaneArgs args, Size const& size, RenderThread& render_thread)
-        -> di::Result<di::Box<Pane>>;
+    auto make_pane(u64 pane_id, CreatePaneArgs args, Size const& size, RenderThread& render_thread,
+                   InputThread& input_thread) -> di::Result<di::Box<Pane>>;
 
     Session* m_session { nullptr };
     u64 m_id { 0 };

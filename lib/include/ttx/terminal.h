@@ -14,6 +14,7 @@
 #include "ttx/terminal/escapes/mode.h"
 #include "ttx/terminal/escapes/osc_52.h"
 #include "ttx/terminal/escapes/osc_7.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/screen.h"
 
 namespace ttx {
@@ -27,7 +28,7 @@ struct WritePtyString {
     di::String string;
 };
 
-using TerminalEvent = di::Variant<APC, terminal::OSC7, terminal::OSC52, Size, WritePtyString>;
+using TerminalEvent = di::Variant<APC, terminal::OSC7, terminal::OSC52, terminal::OSC8671, Size, WritePtyString>;
 
 struct ModeHandler {
     u32 mode { 0 };
@@ -52,6 +53,10 @@ class Terminal {
         // the keyboard mode stack and flags are per-screen.
         KeyReportingFlags m_key_reporting_flags { KeyReportingFlags::None };
         di::Ring<KeyReportingFlags> m_key_reporting_flags_stack;
+
+        // Seamless navigation protocl registration state is per-screen.
+        bool m_seamless_navigate_protocol_active { false };
+        bool m_seamless_navigate_protocol_hide_cursor_on_enter { false };
     };
 
 public:
@@ -109,6 +114,17 @@ public:
 
     void set_allow_force_terminal_size(bool b = true) { m_allow_force_terminal_size = b; }
 
+    void hide_cursor() { m_cursor_hidden = true; }
+
+    auto seamless_navigation_protocol_active() const -> bool {
+        return active_screen().m_seamless_navigate_protocol_active;
+    }
+
+    auto seamless_navigate_protocol_hide_cursor_on_enter() const -> bool {
+        return active_screen().m_seamless_navigate_protocol_active &&
+               active_screen().m_seamless_navigate_protocol_hide_cursor_on_enter;
+    }
+
 private:
     template<auto>
     friend auto make_mode_handler() -> ModeHandler;
@@ -160,6 +176,7 @@ private:
     void osc_52(di::StringView data);
     void osc_66(di::StringView data);
     void osc_133(di::StringView data);
+    void osc_8671(di::StringView data);
 
     void csi_ich(Params const& params);
     void csi_cuu(Params const& params);

@@ -19,14 +19,15 @@ public:
     auto remove_pane(Session& session, Tab& tab, Pane* pane) -> di::Box<Pane>;
     auto pane_by_id(u64 session_id, u64 tab_id, u64 pane_id) -> di::Optional<Pane&>;
 
-    auto add_pane(Session& session, Tab& tab, CreatePaneArgs args, Direction direction, RenderThread& render_thread)
-        -> di::Result<>;
+    auto add_pane(Session& session, Tab& tab, CreatePaneArgs args, Direction direction, RenderThread& render_thread,
+                  InputThread& input_thread) -> di::Result<>;
     auto popup_pane(Session& session, Tab& tab, PopupLayout const& popup_layout, CreatePaneArgs args,
-                    RenderThread& render_thread) -> di::Result<>;
-    auto add_tab(Session& session, CreatePaneArgs args, RenderThread& render_thread) -> di::Result<>;
+                    RenderThread& render_thread, InputThread& input_thread) -> di::Result<>;
+    auto add_tab(Session& session, CreatePaneArgs args, RenderThread& render_thread, InputThread& input_thread)
+        -> di::Result<>;
 
     auto sessions() -> di::Vector<di::Box<Session>>& { return m_sessions; }
-    auto add_session(CreatePaneArgs args, RenderThread& render_thread) -> di::Result<>;
+    auto add_session(CreatePaneArgs args, RenderThread& render_thread, InputThread& input_thread) -> di::Result<>;
     void remove_session(Session& session);
     auto set_active_session(Session* session) -> bool;
     auto active_session() const -> di::Optional<Session&>;
@@ -45,9 +46,10 @@ public:
     void layout_did_update();
     auto as_json_v1() const -> json::v1::LayoutState;
     auto as_json() const -> json::Layout;
-    auto restore_json_v1(json::v1::LayoutState const& json, CreatePaneArgs args, RenderThread& render_thread)
-        -> di::Result<>;
-    auto restore_json(json::Layout const& json, CreatePaneArgs args, RenderThread& render_thread) -> di::Result<>;
+    auto restore_json_v1(json::v1::LayoutState const& json, CreatePaneArgs args, RenderThread& render_thread,
+                         InputThread& input_thread) -> di::Result<>;
+    auto restore_json(json::Layout const& json, CreatePaneArgs args, RenderThread& render_thread,
+                      InputThread& input_thread) -> di::Result<>;
 
 private:
     di::Function<void()> m_layout_did_update;

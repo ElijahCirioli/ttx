@@ -1,5 +1,6 @@
 #pragma once
 
+#include "di/random/prelude.h"
 #include "di/reflect/prelude.h"
 #include "input_mode.h"
 #include "key_bind.h"
@@ -15,7 +16,10 @@
 #include "ttx/terminal/escapes/device_status.h"
 #include "ttx/terminal/escapes/mode.h"
 #include "ttx/terminal/escapes/osc_52.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/escapes/terminfo_string.h"
+#include "ttx/terminal/navigation_direction.h"
+#include "ttx/terminal_input.h"
 
 namespace ttx {
 class RenderThread;
@@ -25,6 +29,8 @@ public:
     static auto create(CreatePaneArgs create_pane_args, di::Vector<KeyBind> key_binds,
                        di::Synchronized<LayoutState>& layout_state, Feature features, RenderThread& render_thread,
                        SaveLayoutThread& save_layout_thread) -> di::Result<di::Box<InputThread>>;
+    static auto create_mock(di::Synchronized<LayoutState>& layout_state, RenderThread& render_thread,
+                            SaveLayoutThread& save_layout_thread) -> di::Box<InputThread>;
 
     explicit InputThread(CreatePaneArgs create_pane_args, di::Vector<KeyBind> key_binds,
                          di::Synchronized<LayoutState>& layout_state, Feature features, RenderThread& render_thread,
@@ -32,6 +38,9 @@ public:
     ~InputThread();
 
     void request_exit();
+    void request_navigate(terminal::NavigateDirection direction);
+
+    void notify_osc_8671(terminal::OSC8671&& osc_8671);
 
 private:
     void input_thread();
@@ -49,8 +58,17 @@ private:
     void handle_event(terminal::StatusStringResponse&&) {}
     void handle_event(terminal::TerminfoString&&) {}
     void handle_event(terminal::OSC52&& event);
+    auto handle_event(terminal::OSC8671& event, bool did_timeout) -> bool;
 
     auto handle_drag(LayoutState& state, MouseCoordinate const& coordinate) -> bool;
+
+    void process_pending_events();
+
+    struct PendingEvent {
+        Event event;
+        dius::SteadyClock::TimePoint receptionTime;
+        bool pending { false };
+    };
 
     InputMode m_mode { InputMode::Insert };
     di::Vector<KeyBind> m_key_binds;
@@ -58,9 +76,11 @@ private:
     di::Atomic<bool> m_done { false };
     di::Optional<MouseCoordinate> m_drag_origin;
     di::Synchronized<LayoutState>& m_layout_state;
+    di::Synchronized<di::Ring<PendingEvent>> m_pending_events;
     RenderThread& m_render_thread;
     SaveLayoutThread& m_save_layout_thread;
     Feature m_features { Feature::None };
+    di::MinstdRand m_rng;
     dius::Thread m_thread;
 };
 }

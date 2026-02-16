@@ -21,6 +21,7 @@ public:
 
     static auto create(di::Synchronized<LayoutState>& layout_state, di::Path save_dir,
                        di::Optional<di::TransparentString> layout_name) -> di::Result<di::Box<SaveLayoutThread>>;
+    static auto create_mock(di::Synchronized<LayoutState>& layout_state) -> di::Box<SaveLayoutThread>;
 
     void push_event(SaveLayoutEvent event);
     void request_save_layout(di::Optional<di::TransparentString> layout_name = {}) {

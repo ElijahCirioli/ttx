@@ -83,23 +83,24 @@ auto Session::pane_by_id(u64 tab_id, u64 pane_id) -> di::Optional<Pane&> {
     return (*tab)->pane_by_id(pane_id);
 }
 
-auto Session::add_pane(Tab& tab, u64 pane_id, CreatePaneArgs args, Direction direction, RenderThread& render_thread)
-    -> di::Result<> {
-    return tab.add_pane(pane_id, m_size, di::move(args), direction, render_thread);
+auto Session::add_pane(Tab& tab, u64 pane_id, CreatePaneArgs args, Direction direction, RenderThread& render_thread,
+                       InputThread& input_thread) -> di::Result<> {
+    return tab.add_pane(pane_id, m_size, di::move(args), direction, render_thread, input_thread);
 }
 
 auto Session::popup_pane(Tab& tab, u64 pane_id, PopupLayout const& popup_layout, CreatePaneArgs args,
-                         RenderThread& render_thread) -> di::Result<> {
-    return tab.popup_pane(pane_id, popup_layout, m_size, di::move(args), render_thread);
+                         RenderThread& render_thread, InputThread& input_thread) -> di::Result<> {
+    return tab.popup_pane(pane_id, popup_layout, m_size, di::move(args), render_thread, input_thread);
 }
 
-auto Session::add_tab(CreatePaneArgs args, u64 tab_id, u64 pane_id, RenderThread& render_thread) -> di::Result<> {
+auto Session::add_tab(CreatePaneArgs args, u64 tab_id, u64 pane_id, RenderThread& render_thread,
+                      InputThread& input_thread) -> di::Result<> {
     auto name = args.replay_path ? "capture"_s
                                  : di::back(di::PathView(args.command[0])).value_or(""_tsv) | di::transform([](char c) {
                                        return c32(c);
                                    }) | di::to<di::String>();
     auto tab = di::make_box<Tab>(this, tab_id, di::move(name));
-    TRY(add_pane(*tab, pane_id, di::move(args), Direction::None, render_thread));
+    TRY(add_pane(*tab, pane_id, di::move(args), Direction::None, render_thread, input_thread));
 
     set_active_tab(tab.get());
     m_tabs.push_back(di::move(tab));
@@ -162,7 +163,7 @@ auto Session::as_json_v1() const -> json::v1::Session {
 }
 
 auto Session::from_json_v1(json::v1::Session const& json, LayoutState* layout_state, Size size, CreatePaneArgs args,
-                           RenderThread& render_thread) -> di::Result<di::Box<Session>> {
+                           RenderThread& render_thread, InputThread& input_thread) -> di::Result<di::Box<Session>> {
     // This is needed because the JSOn parser will accept missing fields for default constructible types.
     if (json.id == 0) {
         return di::Unexpected(di::BasicError::InvalidArgument);
@@ -173,7 +174,8 @@ auto Session::from_json_v1(json::v1::Session const& json, LayoutState* layout_st
 
     // Restore tabs
     for (auto const& tab_json : json.tabs) {
-        result->m_tabs.push_back(TRY(Tab::from_json_v1(tab_json, result.get(), size, args.clone(), render_thread)));
+        result->m_tabs.push_back(
+            TRY(Tab::from_json_v1(tab_json, result.get(), size, args.clone(), render_thread, input_thread)));
     }
 
     // Find the active tab by id

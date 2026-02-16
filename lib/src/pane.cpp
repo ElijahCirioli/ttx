@@ -17,6 +17,7 @@
 #include "ttx/size.h"
 #include "ttx/terminal.h"
 #include "ttx/terminal/escapes/osc_52.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/multi_cell_info.h"
 #include "ttx/terminal/screen.h"
 #include "ttx/utf8_stream_decoder.h"
@@ -699,6 +700,11 @@ void Pane::handle_terminal_event(TerminalEvent&& event) {
                           m_hooks.did_selection(di::move(osc52), false);
                       }
                   },
+                  [&](terminal::OSC8671&& osc8671) {
+                      if (m_hooks.did_receive_seamless_navigation) {
+                          m_hooks.did_receive_seamless_navigation(di::move(osc8671));
+                      }
+                  },
                   [&](APC&& apc) {
                       if (m_hooks.apc_passthrough) {
                           m_hooks.apc_passthrough(apc.data.view());
@@ -740,5 +746,21 @@ void Pane::reset_viewport_scroll() {
     if (needs_invalidation) {
         m_terminal.with_lock(&Terminal::invalidate_all);
     }
+}
+
+auto Pane::seamless_navigate(terminal::OSC8671&& osc_8671) -> bool {
+    auto result = m_terminal.with_lock([&](Terminal& terminal) -> bool {
+        auto active = terminal.seamless_navigation_protocol_active();
+        if (osc_8671.type == terminal::SeamlessNavigationRequestType::Enter &&
+            terminal.seamless_navigate_protocol_hide_cursor_on_enter()) {
+            terminal.hide_cursor();
+        }
+        return active;
+    });
+    if (result) {
+        auto message = osc_8671.serialize();
+        write_pty_string(message);
+    }
+    return result;
 }
 }

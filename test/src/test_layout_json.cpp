@@ -1,6 +1,8 @@
 #include "di/test/prelude.h"
+#include "input.h"
 #include "layout_state.h"
 #include "render.h"
+#include "save_layout.h"
 #include "ttx/layout_json.h"
 
 namespace layout_json {
@@ -172,8 +174,10 @@ static void roundtrip() {
 
     auto state = di::Synchronized(ttx::LayoutState({ 10, 10 }, false));
     auto render_thread = ttx::RenderThread::create_mock(state);
-    ASSERT(
-        state.get_assuming_no_concurrent_accesses().restore_json(json_object.value(), { .mock = true }, render_thread));
+    auto layout_save_thread = ttx::SaveLayoutThread::create_mock(state);
+    auto input_thread = ttx::InputThread::create_mock(state, render_thread, *layout_save_thread);
+    ASSERT(state.get_assuming_no_concurrent_accesses().restore_json(json_object.value(), { .mock = true },
+                                                                    render_thread, *input_thread));
 
     auto json_save = state.get_assuming_no_concurrent_accesses().as_json();
 

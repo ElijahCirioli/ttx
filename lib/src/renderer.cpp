@@ -19,6 +19,7 @@
 #include "ttx/terminal/escapes/osc_52.h"
 #include "ttx/terminal/escapes/osc_66.h"
 #include "ttx/terminal/escapes/osc_8.h"
+#include "ttx/terminal/escapes/osc_8671.h"
 #include "ttx/terminal/multi_cell_info.h"
 #include "ttx/terminal/screen.h"
 
@@ -49,6 +50,18 @@ auto Renderer::setup(dius::SyncFile& output, Feature features, ClipboardMode cli
     // be used. Other terminals ignore this escape anyway.
     // di::writer_print<di::String::Encoding>(buffer, "\033[>1s"_sv);
     // m_cleanup.push_back("\033[>0s"_s);
+
+    // Setup - enable seamless navigation (OSC 8671)
+    if (!!(features & Feature::SeamlessNavigation)) {
+        di::writer_print<di::String::Encoding>(buffer, "{}"_sv,
+                                               terminal::OSC8671 {
+                                                   .type = terminal::SeamlessNavigationRequestType::Register,
+                                                   .hide_cursor_on_enter = true,
+                                               }
+                                                   .serialize());
+        m_cleanup.push_back(
+            terminal::OSC8671 { .type = terminal::SeamlessNavigationRequestType::Unregister }.serialize());
+    }
 
     // Setup - capture all mouse events and use SGR mosue reporting.
     di::writer_print<di::String::Encoding>(buffer, "\033[?1003h\033[?1006h"_sv);
@@ -430,8 +443,10 @@ auto Renderer::finish(dius::SyncFile& output, RenderedCursor const& cursor_in) -
         m_current_screen.set_current_hyperlink({});
 
         di::writer_print<di::String::Encoding>(buffer, "\033[2J"_sv);
-    } else if (changes.empty() && cursor == m_current_cursor) {
-        // No updates, so do nothing.
+    } else if (changes.empty() && cursor == m_current_cursor && !(m_features & Feature::SeamlessNavigation)) {
+        // No updates, so do nothing. Note that when seamless navigation is enabled we need to always draw the cursor
+        // because we configured it to clear the cursor automatically when it navigates to us. Ideally, we'd only
+        // clear the cursor state when receiving that specific event, but this works fine for now.
         return {};
     }
 
