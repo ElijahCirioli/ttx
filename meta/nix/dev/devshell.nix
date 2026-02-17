@@ -18,42 +18,41 @@
         shellHook = ''
           export TTX_DOXYGEN_AWESOME_DIR=${inputs.doxygen-awesome-css};
         '';
-        packages =
-          [
-            # Compilers
-            clang
-            gcc
-          ]
-          # Treefmt and all individual formatters
-          ++ [ config.treefmt.build.wrapper ]
-          ++ builtins.attrValues config.treefmt.build.programs
-          ++ (with pkgs; [
-            # Build support
-            cmake
-            ninja
-            ccache
+        packages = [
+          # Compilers
+          clang
+          gcc
+        ]
+        # Treefmt and all individual formatters
+        ++ [ config.treefmt.build.wrapper ]
+        ++ builtins.attrValues config.treefmt.build.programs
+        ++ (with pkgs; [
+          # Build support
+          cmake
+          ninja
+          ccache
 
-            # justfile support
-            just
-            jq
-            fzf
+          # justfile support
+          just
+          jq
+          fzf
 
-            # Docs
-            doxygen
-            graphviz
+          # Docs
+          doxygen
+          graphviz
 
-            # Coverage
-            lcov
+          # Coverage
+          lcov
 
-            # Kitty - for __width_test__
-            kitty
+          # Kitty - for __width_test__
+          kitty
 
-            # For terminfo compilation
-            ncurses
+          # For terminfo compilation
+          ncurses
 
-            # Dependencies
-            inputs.dius.packages.${system}.default
-          ]);
+          # Dependencies
+          inputs.dius.packages.${system}.default
+        ]);
       };
     };
 }
