@@ -9,6 +9,7 @@
 #include "dius/print.h"
 #include "dius/sync_file.h"
 #include "dius/system/process.h"
+#include "ttx/direction.h"
 #include "ttx/modifiers.h"
 #include "ttx/mouse.h"
 #include "ttx/mouse_event.h"
@@ -600,6 +601,10 @@ void Pane::scroll(Direction direction, i32 amount_in_cells) {
         });
     }
 
+    update_selection_after_scrolling();
+}
+
+void Pane::update_selection_after_scrolling() {
     auto selection = m_terminal.with_lock([&](Terminal& terminal) {
         return terminal.active_screen().screen.selection();
     });
@@ -611,6 +616,34 @@ void Pane::scroll(Direction direction, i32 amount_in_cells) {
         // isn't sent to the application.
         event(MouseEvent(MouseEventType::Move, MouseButton::Left, m_last_mouse_position.value(), Modifiers::Shift));
     }
+}
+
+void Pane::scroll_page_up() {
+    auto amount = i32(m_terminal.with_lock(&Terminal::row_count)) - 1;
+    scroll(Direction::Vertical, -amount);
+}
+
+void Pane::scroll_page_down() {
+    auto amount = i32(m_terminal.with_lock(&Terminal::row_count)) - 1;
+    scroll(Direction::Vertical, amount);
+}
+
+void Pane::scroll_to_top() {
+    m_terminal.with_lock([&](Terminal& terminal) {
+        terminal.active_screen().screen.visual_scroll_to_top();
+        m_vertical_scroll_offset = 0;
+    });
+    update_selection_after_scrolling();
+}
+
+void Pane::scroll_to_bottom() {
+    m_terminal.with_lock([&](Terminal& terminal) {
+        terminal.active_screen().screen.visual_scroll_to_bottom();
+        if (terminal.visible_size().rows < terminal.row_count()) {
+            m_vertical_scroll_offset = terminal.row_count() - terminal.visible_size().rows;
+        }
+    });
+    update_selection_after_scrolling();
 }
 
 void Pane::scroll_prev_command() {
@@ -746,6 +779,12 @@ void Pane::reset_viewport_scroll() {
     if (needs_invalidation) {
         m_terminal.with_lock(&Terminal::invalidate_all);
     }
+}
+
+auto Pane::accepts_scrolling() -> bool {
+    return m_terminal.with_lock([&](Terminal& terminal) -> bool {
+        return terminal.visible_size() != terminal.size() || !terminal.in_alternate_screen_buffer();
+    });
 }
 
 auto Pane::seamless_navigate(terminal::OSC8671&& osc_8671) -> bool {

@@ -559,6 +559,26 @@ auto add_pane(Direction direction) -> Action {
     };
 }
 
+static void scroll_action(ActionContext const& context, di::concepts::Invocable<Pane&> auto do_scroll) {
+    auto const did_scroll = context.layout_state.with_lock([&](LayoutState& state) -> bool {
+        if (auto pane = state.active_pane()) {
+            // Its important to not try to scroll pane's in the alternate screen buffer
+            // (which are running a fullscreen application with no scroll back buffer).
+            // By falling back to forwarding the key event we ensure the inner application
+            // can do its own scrolling.
+            if (pane->accepts_scrolling()) {
+                di::invoke(do_scroll, *pane);
+                return true;
+            }
+            pane->event(context.key_event);
+        }
+        return false;
+    });
+    if (did_scroll) {
+        context.render_thread.request_render();
+    }
+}
+
 auto scroll(Direction direction, i32 amount_in_cells) -> Action {
     auto direction_name = [&] {
         switch (direction) {
@@ -575,12 +595,47 @@ auto scroll(Direction direction, i32 amount_in_cells) -> Action {
         .description = *di::present("Scroll active pane {} by {} cells"_sv, direction_name, di::abs(amount_in_cells)),
         .apply =
             [direction, amount_in_cells](ActionContext const& context) {
-                context.layout_state.with_lock([&](LayoutState& state) {
-                    if (auto pane = state.active_pane()) {
-                        pane->scroll(direction, amount_in_cells);
-                    }
-                });
-                context.render_thread.request_render();
+                scroll_action(context, di::bind_back(&Pane::scroll, direction, amount_in_cells));
+            },
+    };
+}
+
+auto scroll_page_up() -> Action {
+    return {
+        .description = "Scroll active pane up a page"_s,
+        .apply =
+            [](ActionContext const& context) {
+                scroll_action(context, &Pane::scroll_page_up);
+            },
+    };
+}
+
+auto scroll_page_down() -> Action {
+    return {
+        .description = "Scroll active pane up a page"_s,
+        .apply =
+            [](ActionContext const& context) {
+                scroll_action(context, &Pane::scroll_page_down);
+            },
+    };
+}
+
+auto scroll_to_top() -> Action {
+    return {
+        .description = "Scroll active pane to the top of the scroll back buffer"_s,
+        .apply =
+            [](ActionContext const& context) {
+                scroll_action(context, &Pane::scroll_to_top);
+            },
+    };
+}
+
+auto scroll_to_bottom() -> Action {
+    return {
+        .description = "Scroll active pane to the bottom of the scroll back buffer"_s,
+        .apply =
+            [](ActionContext const& context) {
+                scroll_action(context, &Pane::scroll_to_bottom);
             },
     };
 }
@@ -595,6 +650,7 @@ auto scroll_prev_command() -> Action {
                         pane->scroll_prev_command();
                     }
                 });
+                context.render_thread.request_render();
             },
     };
 }
@@ -609,6 +665,7 @@ auto scroll_next_command() -> Action {
                         pane->scroll_next_command();
                     }
                 });
+                context.render_thread.request_render();
             },
     };
 }

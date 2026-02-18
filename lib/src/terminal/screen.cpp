@@ -1401,6 +1401,13 @@ void Screen::visual_scroll_down() {
     }
 }
 
+void Screen::visual_scroll_to_top() {
+    if (m_visual_scroll_offset != absolute_row_start()) {
+        m_visual_scroll_offset = absolute_row_start();
+        invalidate_all();
+    }
+}
+
 void Screen::visual_scroll_to_bottom() {
     if (m_visual_scroll_offset != absolute_row_screen_start()) {
         m_visual_scroll_offset = absolute_row_screen_start();

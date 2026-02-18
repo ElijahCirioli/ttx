@@ -132,6 +132,30 @@ auto make_key_binds(Key prefix, di::Path save_state_path, bool replay_mode) -> d
         });
         make_navigate_binds(result, InputMode::Insert, InputMode::Insert);
         result.push_back({
+            .key = Key::PageUp,
+            .modifiers = Modifiers::Shift,
+            .mode = InputMode::Insert,
+            .action = scroll_page_up(),
+        });
+        result.push_back({
+            .key = Key::PageDown,
+            .modifiers = Modifiers::Shift,
+            .mode = InputMode::Insert,
+            .action = scroll_page_down(),
+        });
+        result.push_back({
+            .key = Key::Home,
+            .modifiers = Modifiers::Shift,
+            .mode = InputMode::Insert,
+            .action = scroll_to_top(),
+        });
+        result.push_back({
+            .key = Key::End,
+            .modifiers = Modifiers::Shift,
+            .mode = InputMode::Insert,
+            .action = scroll_to_bottom(),
+        });
+        result.push_back({
             .key = Key::None,
             .mode = InputMode::Insert,
             .action = send_to_pane(),

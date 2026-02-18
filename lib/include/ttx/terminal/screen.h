@@ -148,6 +148,7 @@ public:
     void visual_scroll_up();
     void visual_scroll_down();
     void visual_scroll_to_bottom();
+    void visual_scroll_to_top();
     void visual_scroll_prev_command();
     void visual_scroll_next_command();
 

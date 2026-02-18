@@ -113,9 +113,20 @@ public:
     auto event(FocusEvent const& event) -> bool;
     auto event(PasteEvent const& event) -> bool;
 
+    /// @brief Query if it is valid to try to scroll the pane.
+    ///
+    /// When this is false scrolling won't do anything. When the
+    /// terminal is in the alternate scrollback buffer there is
+    /// no scrollback, which is the main reason this would return false.
+    auto accepts_scrolling() -> bool;
+
     void invalidate_all();
     void resize(Size const& size);
     void scroll(Direction direction, i32 amount_in_cells);
+    void scroll_page_up();
+    void scroll_page_down();
+    void scroll_to_top();
+    void scroll_to_bottom();
     void scroll_prev_command();
     void scroll_next_command();
     void copy_last_command(bool include_command);
@@ -138,6 +149,7 @@ private:
     void handle_terminal_event(TerminalEvent&& event);
     void write_pty_string(di::StringView data);
     void write_pty_string(di::TransparentStringView data);
+    void update_selection_after_scrolling();
 
     void update_cwd(terminal::OSC7&& path_with_hostname);
     void reset_viewport_scroll();
