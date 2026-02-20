@@ -1,7 +1,7 @@
 # Developing
 
 Developers are strongly encouraged to use [nix](https://nixos.org/) for managing the projects dependencies. This makes
-setup completely hassle free.
+setup completely hassle free. However, it is still possible to setup the dependencies manually.
 
 ## Nix Dev Shell
 
@@ -26,7 +26,12 @@ pick up on the dependencies provided by the `nix` dev shell.
 ### Note for Auto-Completion
 
 Because this project uses bleeding edge C++, you may need to override the `clangd` version being used by your editor
-to version 19+. Otherwise, `clangd` will choke on any code which uses C++ 26 features.
+to version 19+. Otherwise, `clangd` will choke on any code which uses C++ 26 features. In VS Code, the `clangd` extension can
+download the latest `clangd` for you.
+
+If you receive compilation errors from `clangd` concerning missing system headers (like `<stddef.h>` or `<utility>`),
+you need to add `--query-driver=**/*` to the arguments `clangd` is launched with. Instead of globbing you can pass
+the absolute path of your c++ compiler, but that's very inconvenient when using nix.
 
 ## CMake Developer Mode
 
@@ -45,7 +50,7 @@ the project. As a developer, you are recommended to always have the [latest
 CMake version](https://cmake.org/download/) installed to make use of the latest Quality-of-Life
 additions.
 
-You have a few options to pass `dius_DEVELOPER_MODE` to the configure
+You have a few options to pass `ttx_DEVELOPER_MODE` to the configure
 command, but this project prefers to use presets.
 
 As a developer, you should create a `CMakeUserPresets.json` file at the root of
@@ -63,7 +68,7 @@ the project:
     {
       "name": "dev",
       "binaryDir": "${sourceDir}/build/dev",
-      "inherits": ["dev-mode", "docs", "ci-<os>"],
+      "inherits": ["dev-mode", "clang", "ci-<os>"],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -93,6 +98,11 @@ You should replace `<os>` in your newly created presets file with the name of
 the operating system you have, which may be `win64`, `linux` or `darwin`. You
 can see what these correspond to in the
 [`CMakePresets.json`](../../CMakePresets.json) file.
+
+The config file shown uses `clang` for compilation, which is recommended for
+development because it produces better error messages and is less likely to
+break `clangd`. However, you can still use `gcc` by removing the `"clang"`
+preset from the list of presets to inherit from.
 
 `CMakeUserPresets.json` is also the perfect place in which you can put all
 sorts of things that you would otherwise want to pass to the configure command
@@ -130,6 +140,11 @@ the number of jobs to use, which should ideally be specified to the number of
 threads your CPU has. You may also want to add that to your preset using the
 `jobs` property, see the [presets documentation](https://cmake.org/download/) for more details.
 
+> Note
+> When not using nix, the `kitty:width` test may fail due to not having installed
+> kitty. You should either ignore the test failure or install kitty. This test
+> requires kitty because it validates that our unicode behavior matches kitty's.
+
 ### Developer Mode Targets
 
 These are targets you may invoke using the build command from above, with an
@@ -145,30 +160,18 @@ file by default, which can be submitted to services with CI integration. The
 HTML command uses the trace command's output to generate an HTML document to
 `<binary-dir>/coverage_html` by default.
 
+The GitHub CI uses Codecov to keep track of code coverage for the project, which can be viewed
+[here](https://app.codecov.io/gh/coletrammer/ttx). The coverage information is uploaded for
+every GitHub PR.
+
 #### `docs`
 
-Available if `BUILD_DOCS` is enabled. Builds to documentation using
-Doxygen. The output will go to `<binary-dir>/docs/html` by default
+To enable this you must should add the `"docs"` preset to your dev preset via the inherits property.
+The docs are generated using [Doxygen](https://www.doxygen.nl/), so if you're not using nix you'll need
+to install it. Additionally, when not using nix you must checkout [Doxygen Awesome](https://jothepro.github.io/doxygen-awesome-css/)
+and add a CMake configuration variable `TTX_DOXYGEN_AWESOME_DIR` which should be set to the absolute
+path of Doxygen Awesome. The output will go to `<binary-dir>/docs/html` by default
 (customizable using `DOXYGEN_OUTPUT_DIRECTORY`).
-
-## dius Library
-
-When using the nix environment, the dius library is automatically available to
-the CMake build. However, this copy is immutable. If you need to make changes
-to both libraries at once, a custom checkout of dius can be used by creating
-a symbolic link named `dius` in the root of this package. For instance, if your
-dius checkout is in a sibling directory of your ttx checkout, run:
-
-```sh
-ln -s "$(realpath ../dius)" dius
-```
-
-If you need to modify the di library instead (dius's dependency), you can
-add a symlink to dius's directory like so:
-
-```sh
-ln -s "$(realpath ../di)" ../dius
-```
 
 ## Justfile
 
@@ -191,10 +194,16 @@ the build configuration will be symlinked into the project directory. This ensur
 `clangd` will be configured properly for your preset (This happens automatically
 when using a VS Code extension like `ms-vscode.cpptools`).
 
-Building and running the unit tests is as simple as:
+Building and running all tests is as simple as:
 
 ```sh
 just bt
+```
+
+To run an individual unit test, use:
+
+```sh
+just but -s $suite -t $test
 ```
 
 To format all source files, use:
@@ -203,10 +212,16 @@ To format all source files, use:
 just format
 ```
 
-To actually run ttx, use:
+To fix C++ lint violations, use:
 
 ```sh
-just run
+just tidy
+```
+
+To actually run ttx (and build), use:
+
+```sh
+just br
 ```
 
 To see an overview of all `just` commands, simply run `just` with no arguments.
@@ -217,3 +232,76 @@ just
 
 There are several additional commands which should cover everything necessary
 to develop the project.
+
+## libttx vs ttx
+
+This project's source files are split between a library `libttx` and an application
+`ttx`. `libttx` includes a functioning terminal emulator as well as additional functionality
+necessary for making a TUI (like parsing terminal key presses and rendering to the screen).
+This functionality could theoretically be used by other applications as the library is
+fully consumable via CMake.
+
+Source code in `ttx` is specific to the `ttx` application and mostly orchestrates components
+in `libttx`.
+
+## Testing
+
+`ttx` has 2 different test systems, which are used for different purposes. The
+unit test framework is for testing individual components. The actual terminal
+emulation code has a higher bar for unit test coverage, with an effective target
+near 100% code coverage. Other components in `libttx` should have unit tests but
+the bar is not as high. Code in the `ttx` application itself rarely has unit tests.
+Instead, we rely on the second test framework for test coverage.
+
+The `terminal` testing framework works by feeding an input file consisting of terminal
+escape sequences, then dumping the internal state of `ttx` as terminal escape
+sequences, and finally comparing that dump to an expected file. So these are effectively
+regression tests. The cool part of the system is that `ttx` includes can natively view
+these state dumps (as they are just terminal escape sequences), so you can validate the
+expected state is correct.
+
+To update the expected output of a terminal test, use the `justfile`'s `generate_terminal_test`
+command. For instance:
+
+```sh
+just generate_terminal_test zsh-eza
+```
+
+This will open an instance of `ttx` with the state dump from running `ttx` in headless mode,
+allowing you to manually inspect the state and ensure it is still correct.
+
+To add a new terminal test, run `ttx` with the `-c` (capture) option. Then inside `ttx`
+run whatever terminal commands (you're in a shell inside `ttx` now), and then save
+the capture via `prefix > shift+i`. Once you have the test input, you can use the
+`generate_terminal_test` to get the expected state and validate that it looks correct
+visually.
+
+## Code Style
+
+Coding style conventions are enforced automatically via `clang-tidy`. These are enforced
+by the CI system and all code in the project follows these conventions. Your editor
+should be able to automatically flag and fix many of style errors on your behalf. You
+can also fix all linting violations use the `tidy` build target or `just` command.
+
+Additionally, all C++ code is autoformatted via `clang-format`. When using nix,
+the `treefmt` command should be used for formatting, as it also includes auto-formatters
+for the other file types which occur in the project's source code.
+
+## dius Library
+
+When using the nix environment, the dius library is automatically available to
+the CMake build. However, this copy is immutable. If you need to make changes
+to both libraries at once, a custom checkout of dius can be used by creating
+a symbolic link named `dius` in the root of this package. For instance, if your
+dius checkout is in a sibling directory of your ttx checkout, run:
+
+```sh
+ln -s "$(realpath ../dius)" dius
+```
+
+If you need to modify the di library instead (dius's dependency), you can
+add a symlink to dius's directory like so:
+
+```sh
+ln -s "$(realpath ../di)" ../dius
+```

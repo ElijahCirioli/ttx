@@ -8,6 +8,11 @@ This package can be built either directly through [CMake](https://cmake.org/) or
 
 - Install CMake version 3.21 or later.
 - Install either GCC 14+ or Clang 19+.
+  - On MacOS this can be done using [Homebrew](https://brew.sh/).
+  - On Ubuntu the latest clang binaries can be installed via these [steps](https://apt.llvm.org/).
+  - On bleeding edge Linux distros the system clang and gcc should be up-to-date.
+  - You can always fallback towards compiling from source if your system does not have the latest compiler.
+  - Windows is not natively supported, you will need to use WSL to build or develop the project.
 
 ### Dependencies
 
